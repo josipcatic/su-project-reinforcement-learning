@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RL Dashboard — DQN vs PPO</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+  :root {
+    --bg:#050810;--bg2:#0c1120;--bg3:#111827;--border:#1e2d47;
+    --dqn:#00e5ff;--ppo:#ff6b35;--accent:#7c3aed;--green:#22c55e;
+    --text:#e2e8f0;--muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;z-index:0;
+    background-image:linear-gradient(rgba(0,229,255,.03)1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.03)1px,transparent 1px);
+    background-size:40px 40px;pointer-events:none;}
+  header{position:relative;z-index:10;padding:32px 48px 24px;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,rgba(12,17,32,.95)0%,transparent 100%);
+    display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;}
+  .brand-label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:4px;text-transform:uppercase;color:var(--dqn);opacity:.7;}
+  .brand-title{font-size:clamp(22px,3vw,36px);font-weight:800;line-height:1;
+    background:linear-gradient(135deg,var(--dqn)0%,var(--ppo)100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .brand-sub{font-size:13px;color:var(--muted);margin-top:6px;}
+  .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .select-wrap{position:relative;}
+  select{appearance:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);
+    padding:9px 34px 9px 14px;border-radius:8px;font-family:'Space Mono',monospace;font-size:12px;cursor:pointer;outline:none;transition:border-color .2s;}
+  select:hover{border-color:var(--dqn);}
+  .arrow{position:absolute;right:11px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);font-size:10px;}
+  .btn{display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:8px;border:none;
+    font-family:'Space Mono',monospace;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap;}
+  .btn-primary{background:linear-gradient(135deg,var(--dqn),var(--accent));color:#000;font-weight:700;}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,229,255,.3);}
+  .btn-ghost{background:var(--bg3);border:1px solid var(--border);color:var(--text);}
+  .btn-ghost:hover{border-color:var(--ppo);color:var(--ppo);}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);}
+  .dot.live{background:var(--green);animation:pulse 1.5s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(1.3);}}
+  main{position:relative;z-index:5;padding:28px 48px 64px;max-width:1600px;margin:0 auto;}
+  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:28px;}
+  .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:transform .2s;}
+  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--c1),var(--c2));}
+  .stat-card:hover{transform:translateY(-2px);}
+  .stat-label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+  .stat-value{font-size:26px;font-weight:800;line-height:1;background:linear-gradient(135deg,var(--c1),var(--c2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .stat-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+  .legend{display:flex;gap:22px;align-items:center;margin-bottom:22px;flex-wrap:wrap;}
+  .legend-item{display:flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;}
+  .legend-line{width:22px;height:3px;border-radius:2px;}
+  .charts-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:22px;}
+  .chart-wide{grid-column:1/-1;}
+  .chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;position:relative;overflow:hidden;}
+  .chart-card::after{content:'';position:absolute;top:-60px;right:-60px;width:180px;height:180px;border-radius:50%;
+    background:radial-gradient(circle,var(--glow,#00e5ff)0%,transparent 70%);opacity:.06;pointer-events:none;}
+  .chart-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;}
+  .chart-title{font-size:14px;font-weight:600;}
+  .chart-desc{font-size:11px;color:var(--muted);margin-top:2px;}
+  .chart-badge{font-family:'Space Mono',monospace;font-size:10px;padding:3px 8px;border-radius:4px;background:rgba(0,229,255,.1);color:var(--dqn);}
+  .chart-wrap{position:relative;height:230px;}
+  .table-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;overflow:auto;}
+  .table-card h3{font-size:14px;margin-bottom:14px;}
+  table{width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:12px;}
+  th{text-align:left;padding:9px 13px;border-bottom:1px solid var(--border);color:var(--muted);letter-spacing:1px;font-size:10px;text-transform:uppercase;}
+  td{padding:11px 13px;border-bottom:1px solid rgba(30,45,71,.5);}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(0,229,255,.03);}
+  .tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;}
+  .tag-dqn{background:rgba(0,229,255,.15);color:var(--dqn);}
+  .tag-ppo{background:rgba(255,107,53,.15);color:var(--ppo);}
+  .empty{text-align:center;padding:80px 24px;color:var(--muted);}
+  .empty-icon{font-size:48px;margin-bottom:16px;opacity:.4;}
+  .empty h3{font-size:18px;margin-bottom:8px;color:var(--text);}
+  .empty p{font-size:13px;line-height:1.8;max-width:480px;margin:0 auto 16px;}
+  .empty code{display:block;background:var(--bg3);border:1px solid var(--border);padding:10px 16px;
+    border-radius:8px;font-family:'Space Mono',monospace;font-size:12px;color:var(--dqn);margin:6px auto;max-width:480px;text-align:left;}
+  .error-banner{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;
+    padding:12px 16px;font-family:'Space Mono',monospace;font-size:12px;color:#f87171;margin-bottom:20px;}
+  footer{text-align:center;padding:20px;font-family:'Space Mono',monospace;font-size:10px;
+    color:var(--muted);border-top:1px solid var(--border);position:relative;z-index:5;}
+  @media(max-width:900px){header,main{padding-left:20px;padding-right:20px;}.charts-grid{grid-template-columns:1fr;}.chart-wide{grid-column:1;}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand-label">Reinforcement Learning</div>
+    <div class="brand-title">DQN vs PPO</div>
+    <div class="brand-sub">Live training metrics · Gymnasium environments</div>
+  </div>
+  <div class="controls">
+    <div class="select-wrap">
+      <select id="envSelect" onchange="loadData()">
+        <option value="CartPole_v1">CartPole-v1</option>
+        <option value="LunarLander_v3">LunarLander-v3</option>
+        <option value="MountainCar_v0">MountainCar-v0</option>
+        <option value="Acrobot_v1">Acrobot-v1</option>
+      </select>
+      <span class="arrow">▾</span>
+    </div>
+    <button class="btn btn-ghost" onclick="toggleAuto()" id="autoBtn">
+      <span class="dot" id="dot"></span>Auto-refresh
+    </button>
+    <button class="btn btn-primary" onclick="loadData()">↻ Reload</button>
+  </div>
+</header>
+
+<main id="main">
+  <div class="empty">
+    <div class="empty-icon">⏳</div>
+    <h3>Loading...</h3>
+  </div>
+</main>
+
+<footer>RL Dashboard · DQN &amp; PPO · Gymnasium · metrics/ folder</footer>
+
+<script>
+const DQN_C = '#00e5ff', PPO_C = '#ff6b35';
+let charts = {}, autoTimer = null;
+
+// ── Fetch from server API ──────────────────────────────────────────────────
+async function fetchMetrics(algo, envKey) {
+  try {
+    const r = await fetch(`/api/metrics?algo=${algo}&env=${envKey}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d.error) return null;
+    return d;
+  } catch { return null; }
+}
+
+async function loadData() {
+  const env = document.getElementById('envSelect').value;
+  let dqn, ppo;
+  try {
+    [dqn, ppo] = await Promise.all([
+      fetchMetrics('DQN', env),
+      fetchMetrics('PPO', env),
+    ]);
+  } catch(e) {
+    showServerError();
+    return;
+  }
+  if (!dqn && !ppo) { showEmpty(env); return; }
+  render(dqn, ppo, env);
+}
+
+// ── Chart helpers ─────────────────────────────────────────────────────────
+const BASE_OPTS = {
+  responsive:true, maintainAspectRatio:false,
+  animation:{duration:300},
+  interaction:{intersect:false,mode:'index'},
+  plugins:{
+    legend:{display:false},
+    tooltip:{
+      backgroundColor:'#0c1120',borderColor:'#1e2d47',borderWidth:1,
+      titleFont:{family:'Space Mono',size:11},bodyFont:{family:'Space Mono',size:11},
+      titleColor:'#e2e8f0',bodyColor:'#94a3b8',
+      callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}`}
+    }
+  },
+  scales:{
+    x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#64748b',font:{family:'Space Mono',size:10},maxTicksLimit:8}},
+    y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#64748b',font:{family:'Space Mono',size:10}}}
+  }
+};
+
+function ds(label, data, color, dashed=false) {
+  return {label,data,borderColor:color,backgroundColor:color+'15',borderWidth:dashed?1.5:2,
+    borderDash:dashed?[5,4]:[],pointRadius:0,pointHoverRadius:4,tension:0.3,fill:false};
+}
+
+function smooth(arr, w=15) {
+  if(!arr||!arr.length) return [];
+  return arr.map((_,i)=>{const s=arr.slice(Math.max(0,i-w+1),i+1);return s.reduce((a,b)=>a+b,0)/s.length;});
+}
+
+function mkChart(id, datasets, labels, extraOpts={}) {
+  const canvas = document.getElementById(id);
+  if(!canvas) return;
+  if(charts[id]) charts[id].destroy();
+  charts[id] = new Chart(canvas, {type:'line', data:{labels, datasets},
+    options:{...BASE_OPTS, ...extraOpts, plugins:{...BASE_OPTS.plugins,...(extraOpts.plugins||{})},
+      scales:{...BASE_OPTS.scales,...(extraOpts.scales||{})}}});
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render(dqn, ppo, envKey) {
+  const envLabel = envKey.replace(/_/g,'-');
+  const base = dqn || ppo;
+  const dqnBest  = dqn ? Math.max(...dqn.reward).toFixed(1) : '—';
+  const ppoBest  = ppo ? Math.max(...ppo.reward).toFixed(1) : '—';
+  const dqnAvg   = dqn ? (dqn.reward.reduce((a,b)=>a+b,0)/dqn.reward.length).toFixed(1) : '—';
+  const ppoAvg   = ppo ? (ppo.reward.reduce((a,b)=>a+b,0)/ppo.reward.length).toFixed(1) : '—';
+  const dqnEp    = dqn ? dqn.episode.at(-1) : '—';
+  const ppoEp    = ppo ? ppo.episode.at(-1) : '—';
+  const dqnLast  = dqn ? dqn.reward.at(-1).toFixed(1) : '—';
+  const ppoLast  = ppo ? ppo.reward.at(-1).toFixed(1) : '—';
+
+  document.getElementById('main').innerHTML = `
+    <div class="stats-row">
+      <div class="stat-card" style="--c1:${DQN_C};--c2:#7c3aed">
+        <div class="stat-label">DQN — Best Reward</div>
+        <div class="stat-value">${dqnBest}</div>
+        <div class="stat-sub">Avg ${dqnAvg} · ${dqnEp} ep</div>
+      </div>
+      <div class="stat-card" style="--c1:${PPO_C};--c2:#fbbf24">
+        <div class="stat-label">PPO — Best Reward</div>
+        <div class="stat-value">${ppoBest}</div>
+        <div class="stat-sub">Avg ${ppoAvg} · ${ppoEp} ep</div>
+      </div>
+      <div class="stat-card" style="--c1:#22c55e;--c2:#16a34a">
+        <div class="stat-label">DQN — Latest</div>
+        <div class="stat-value">${dqnLast}</div>
+        <div class="stat-sub">Last episode reward</div>
+      </div>
+      <div class="stat-card" style="--c1:#a78bfa;--c2:#7c3aed">
+        <div class="stat-label">PPO — Latest</div>
+        <div class="stat-value">${ppoLast}</div>
+        <div class="stat-sub">Last episode reward</div>
+      </div>
+    </div>
+
+    <div class="legend">
+      ${dqn?`<div class="legend-item"><div class="legend-line" style="background:${DQN_C}"></div>DQN raw</div>
+             <div class="legend-item"><div class="legend-line" style="background:${DQN_C};opacity:.5"></div>DQN smooth</div>`:''}
+      ${ppo?`<div class="legend-item"><div class="legend-line" style="background:${PPO_C}"></div>PPO raw</div>
+             <div class="legend-item"><div class="legend-line" style="background:${PPO_C};opacity:.5"></div>PPO smooth</div>`:''}
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card chart-wide" style="--glow:${DQN_C}">
+        <div class="chart-header">
+          <div><div class="chart-title">Episode Reward</div><div class="chart-desc">Raw returns + smoothed (window 15)</div></div>
+          <div class="chart-badge">${envLabel}</div>
+        </div>
+        <div class="chart-wrap"><canvas id="cReward"></canvas></div>
+      </div>
+
+      <div class="chart-card" style="--glow:${DQN_C}">
+        <div class="chart-header"><div><div class="chart-title">Training Loss</div><div class="chart-desc">DQN: TD error · PPO: combined</div></div></div>
+        <div class="chart-wrap"><canvas id="cLoss"></canvas></div>
+      </div>
+
+      <div class="chart-card" style="--glow:${PPO_C}">
+        <div class="chart-header"><div><div class="chart-title">Cumulative Reward</div><div class="chart-desc">Running total of episode returns</div></div></div>
+        <div class="chart-wrap"><canvas id="cCum"></canvas></div>
+      </div>
+
+      ${dqn&&dqn.epsilon?`
+      <div class="chart-card" style="--glow:#7c3aed">
+        <div class="chart-header"><div><div class="chart-title">DQN ε Decay</div><div class="chart-desc">Exploration rate over episodes</div></div></div>
+        <div class="chart-wrap"><canvas id="cEps"></canvas></div>
+      </div>`:''}
+
+      ${ppo&&ppo.entropy?`
+      <div class="chart-card" style="--glow:${PPO_C}">
+        <div class="chart-header"><div><div class="chart-title">PPO Policy Entropy</div><div class="chart-desc">Exploration measure</div></div></div>
+        <div class="chart-wrap"><canvas id="cEnt"></canvas></div>
+      </div>`:''}
+
+      ${ppo&&ppo.policy_loss?`
+      <div class="chart-card" style="--glow:${PPO_C}">
+        <div class="chart-header"><div><div class="chart-title">PPO Loss Breakdown</div><div class="chart-desc">Policy loss vs value loss</div></div></div>
+        <div class="chart-wrap"><canvas id="cPpoLoss"></canvas></div>
+      </div>`:''}
+    </div>
+
+    <div class="table-card">
+      <h3>Algorithm Comparison — ${envLabel}</h3>
+      <table>
+        <thead><tr><th>Metric</th><th>DQN</th><th>PPO</th><th>Better</th></tr></thead>
+        <tbody id="tBody"></tbody>
+      </table>
+    </div>`;
+
+  // ── Draw charts ──
+  const labels = base.episode;
+
+  // Reward
+  const rewDs = [];
+  if(dqn){rewDs.push(ds('DQN raw',dqn.reward,DQN_C));rewDs.push(ds('DQN smooth',smooth(dqn.reward),DQN_C+'99',true));}
+  if(ppo){rewDs.push(ds('PPO raw',ppo.reward,PPO_C));rewDs.push(ds('PPO smooth',smooth(ppo.reward),PPO_C+'99',true));}
+  mkChart('cReward', rewDs, labels);
+
+  // Loss
+  const lossDs=[];
+  if(dqn&&dqn.loss) lossDs.push(ds('DQN Loss',smooth(dqn.loss,10),DQN_C));
+  if(ppo&&ppo.loss)  lossDs.push(ds('PPO Loss',smooth(ppo.loss,10),PPO_C));
+  if(lossDs.length) mkChart('cLoss', lossDs, labels);
+
+  // Cumulative
+  const cumDs=[];
+  if(dqn){let s=0;cumDs.push(ds('DQN',dqn.reward.map(r=>(s+=r,s)),DQN_C));}
+  if(ppo){let s=0;cumDs.push(ds('PPO',ppo.reward.map(r=>(s+=r,s)),PPO_C));}
+  mkChart('cCum', cumDs, labels);
+
+  // Epsilon
+  if(dqn&&dqn.epsilon) mkChart('cEps',[ds('ε',dqn.epsilon,'#7c3aed')],dqn.episode,
+    {scales:{...BASE_OPTS.scales,y:{...BASE_OPTS.scales.y,min:0,max:1}}});
+
+  // Entropy
+  if(ppo&&ppo.entropy) mkChart('cEnt',[ds('Entropy',smooth(ppo.entropy,10),PPO_C)],ppo.episode);
+
+  // PPO loss breakdown
+  if(ppo&&ppo.policy_loss) mkChart('cPpoLoss',[
+    ds('Policy',smooth(ppo.policy_loss,10),PPO_C),
+    ds('Value', smooth(ppo.value_loss,10),'#fbbf24'),
+  ],ppo.episode);
+
+  // ── Comparison table ──
+  if(dqn&&ppo){
+    const avg50=(arr)=>(arr.slice(-50).reduce((a,b)=>a+b,0)/Math.min(50,arr.length)).toFixed(1);
+    const rows=[
+      {l:'Best Reward',  d:dqnBest, p:ppoBest, hi:true},
+      {l:'Average Reward',d:dqnAvg, p:ppoAvg,  hi:true},
+      {l:'Last-50 Avg',  d:avg50(dqn.reward), p:avg50(ppo.reward), hi:true},
+      {l:'Episodes',     d:dqnEp,  p:ppoEp,   hi:false},
+    ];
+    document.getElementById('tBody').innerHTML=rows.map(r=>{
+      const dv=parseFloat(r.d),pv=parseFloat(r.p);
+      let win='—';
+      if(!isNaN(dv)&&!isNaN(pv)){
+        const dWins=r.hi?dv>=pv:dv<=pv;
+        win=dWins?`<span class="tag tag-dqn">DQN</span>`:`<span class="tag tag-ppo">PPO</span>`;
+      }
+      return `<tr><td>${r.l}</td><td><span class="tag tag-dqn">${r.d}</span></td><td><span class="tag tag-ppo">${r.p}</span></td><td>${win}</td></tr>`;
+    }).join('');
+  } else {
+    const tb=document.getElementById('tBody');
+    if(tb) tb.innerHTML=`<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:20px">Train both algorithms to compare</td></tr>`;
+  }
+}
+
+function showEmpty(env) {
+  document.getElementById('main').innerHTML=`
+    <div class="empty">
+      <div class="empty-icon">📡</div>
+      <h3>No data for ${env.replace(/_/g,'-')}</h3>
+      <p>Start training an agent, then click <strong>Reload</strong>.<br>Metrics are saved automatically every 10 episodes.</p>
+      <code>python train.py --algo both --env ${env.split('_')[0].toLowerCase()} --episodes 400</code>
+    </div>`;
+}
+
+function showServerError() {
+  document.getElementById('main').innerHTML=`
+    <div class="empty">
+      <div class="empty-icon">🔌</div>
+      <h3>Cannot reach server</h3>
+      <p>The dashboard requires the Python server to be running. Open a terminal in your project folder and run:</p>
+      <code>python server.py</code>
+      <p style="margin-top:12px">Then refresh this page. The server runs at <strong>http://localhost:8765</strong></p>
+    </div>`;
+}
+
+// ── Auto-refresh ──────────────────────────────────────────────────────────
+function toggleAuto(){
+  const dot=document.getElementById('dot'),btn=document.getElementById('autoBtn');
+  if(autoTimer){
+    clearInterval(autoTimer);autoTimer=null;
+    dot.className='dot';btn.innerHTML='<span class="dot" id="dot"></span>Auto-refresh';
+  } else {
+    autoTimer=setInterval(loadData,3000);
+    dot.className='dot live';btn.innerHTML='<span class="dot live" id="dot"></span>Live ●';
+    loadData();
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
