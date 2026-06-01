@@ -93,3 +93,9 @@ rl_project/
     ├── PPO_CartPole_v1.json
     └── ...
 ```
+
+
+python train.py --algo both --env mountain
+python train.py --algo both --env lunarlander
+python train.py --algo both --env acrobot
+python train.py --algo both --env cartpole

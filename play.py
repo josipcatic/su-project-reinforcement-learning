@@ -25,7 +25,8 @@ import gymnasium as gym
 
 # ─────────────────────────────────────────────────────────────────────────────
 MODELS_DIR = "models"
-DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#"cuda" if torch.cuda.is_available() else 
+DEVICE     = torch.device("cpu")
 
 ENVS = {
     "cartpole":    "CartPole-v1",
