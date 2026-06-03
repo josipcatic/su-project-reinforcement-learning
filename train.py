@@ -60,37 +60,86 @@ def set_seed(seed=42):
 # ─────────────────────────── Reward shaping ──────────────────────────────────
 
 def shape_reward(env_name, obs, reward, done):
-    """
-    MountainCar: reward velocity magnitude + height progress.
-    LunarLander DQN: small penalty per step to discourage hovering.
-    """
+    '''
     if env_name == "MountainCar-v0":
         pos, vel = obs[0], obs[1]
-        reward += 10.0 * abs(vel)            # momentum is good
-        reward += 5.0  * (pos + 0.5)         # further right is better
-        if pos >= 0.45:                       # big bonus for reaching goal
+ 
+        # Reward the LEFT-swing strategy specifically:
+        # - Going left (vel < 0) when on the right side of the valley builds momentum
+        # - Going right (vel > 0) when on the left side is the payoff swing
+        # -0.6 is roughly the valley bottom
+        if vel < 0 and pos > -0.6:        # swinging left from right side — correct
+            reward += 4.2 * abs(vel)
+        elif vel > 0 and pos < -0.6:      # swinging right from left peak — correct
+            reward += 4.0 * abs(vel)
+        else:
+            reward += 2.0 * abs(vel)      # any movement still beats standing still
+ 
+        # Bonus for reaching new heights on the right side
+        reward += 3.0 * max(0.0, pos - (-0.4))
+ 
+        # Large bonus for actually reaching the goal
+        if pos >= 0.45:
             reward += 100.0
+    '''
+
+    if env_name == "MountainCar-v0":
+        pos, vel = obs[0], obs[1]
+    
+        if vel < 0 and pos > -0.6:
+            reward += 0.4 * abs(vel)      # was 4.2 — scaled down 10x
+        elif vel > 0 and pos < -0.6:
+            reward += 0.4 * abs(vel)      # was 4.0
+        else:
+            reward += 0.1 * abs(vel)      # was 2.0
+    
+        reward += 0.3 * max(0.0, pos - (-0.4))   # was 3.0
+    
+        if pos >= 0.45:
+            reward += 10.0               # was 100 — still big but not insane
+
     elif env_name == "LunarLander-v3":
-        reward -= 0.1                         # small step penalty → be efficient
+        y_pos = obs[1]
+        vel_y = obs[3]
+        # Reward being low and slow — the ideal landing approach
+        if y_pos < 0.5:
+            reward += 0.5 * (0.5 - y_pos)        # higher bonus closer to ground
+            reward -= 0.3 * abs(vel_y)            # penalize fast descent near ground
+        reward -= 0.05                            # light step penalty
+    
+    '''
+    elif env_name == "LunarLander-v3":
+        x_pos  = obs[0]   # horizontal position, 0 = center
+        y_pos  = obs[1]   # vertical position
+        vel_x  = obs[2]
+        vel_y  = obs[3]
+    
+        # Guide toward the center horizontally
+        reward -= 0.3 * abs(x_pos)
+    
+        # When close to the ground, penalize high speed — encourages soft landing
+        if y_pos < 0.3:
+            reward -= 0.5 * abs(vel_y)
+            reward -= 0.5 * abs(vel_x)
+    
+        # Small step penalty to discourage hovering
+        reward -= 0.1
+    '''
+
+
     return reward
 
 # ─────────────────────────── Curriculum reset (MountainCar) ──────────────────
 
 def curriculum_reset(env, env_name, ep, total_episodes):
-    """
-    For MountainCar: in early training, start the car closer to the goal
-    so it occasionally reaches it and gets positive reward signal.
-    Gradually shift start positions back to normal as training progresses.
-    """
     obs, info = env.reset()
     if env_name == "MountainCar-v0":
-        progress = ep / total_episodes        # 0 → 1 over training
-        # Early episodes: start near the goal (pos ~0.4, vel ~0)
-        # Late episodes:  normal random start
+        progress = ep / total_episodes
         if random.random() > progress:
-            # Place car on the right slope, facing right
-            forced_pos = random.uniform(0.2, 0.45)
-            forced_vel = random.uniform(0.01, 0.04)
+            # Full range — left slope, valley, and right slope
+            # so it learns the whole swing, not just the final push
+            forced_pos = random.uniform(-0.8, 0.45)
+            forced_vel = random.uniform(-0.04, 0.04)
             env.unwrapped.state = np.array([forced_pos, forced_vel])
             obs = env.unwrapped.state.copy()
     return obs
@@ -101,22 +150,28 @@ def curriculum_reset(env, env_name, ep, total_episodes):
 
 DQN_CONFIGS = {
     "CartPole-v1": dict(
-        lr=5e-4, gamma=0.99, batch_size=128,
-        eps_start=1.0, eps_end=0.01, eps_decay_per="episode", eps_decay=0.997,
-        target_update=20, buffer_cap=100_000, episodes=600,
+        lr=1e-3, gamma=0.99, batch_size=64,
+        eps_start=1.0, eps_end=0.01, eps_decay_per="episode", eps_decay=0.995,
+        target_update=10, use_step_target=False,
+        buffer_cap=50_000, episodes=500,
+        use_lr_schedule=False,
     ),
     "LunarLander-v3": dict(
-        lr=1e-4, gamma=0.999, batch_size=128,
-        # Per-step epsilon decay → explores more thoroughly
-        eps_start=1.0, eps_end=0.05, eps_decay_per="step", eps_decay=0.9999,
-        target_update=10, buffer_cap=200_000, episodes=700,
-        reward_shaping=True,
+        lr=2e-4, gamma=0.95, batch_size=256, learn_start=10_000,
+        eps_start=1.0, eps_end=0.02, eps_decay_per="step", eps_decay=0.995,
+        target_update=15, use_step_target=True,
+        buffer_cap=200_000, episodes=1000,
+        reward_shaping=True,   # native reward is fine, shaping was hurting it
+        use_lr_schedule=False,  # keep lr stable
     ),
     "MountainCar-v0": dict(
         lr=1e-3, gamma=0.99, batch_size=64,
-        eps_start=1.0, eps_end=0.01, eps_decay_per="step", eps_decay=0.9995,
-        target_update=5, buffer_cap=50_000, episodes=1000,
+        eps_start=1.0, eps_end=0.05, eps_decay_per="step", eps_decay=0.9998,
+        target_update=5, use_step_target=True,
+        buffer_cap=100_000, episodes=1500,
         reward_shaping=True, curriculum=True,
+        use_lr_schedule=False,
+        learn_start=2000,
     ),
     "Acrobot-v1": dict(
         lr=5e-4, gamma=0.99, batch_size=128,
@@ -134,17 +189,25 @@ PPO_CONFIGS = {
         ent_coef=0.01, vf_coef=0.5, episodes=600,
     ),
     "LunarLander-v3": dict(
-        lr=3e-4, gamma=0.999, lam=0.98, clip_eps=0.2,
-        ppo_epochs=10,
-        # Shorter rollouts = fresher gradients = no frozen entropy
-        rollout_steps=512, minibatch_size=64,
-        # Higher entropy coef forces policy to keep exploring
-        ent_coef=0.05, vf_coef=0.5, episodes=800,
+        lr=2e-4,             # slightly lower now that it's converging
+        gamma=0.95, lam=0.95,
+        clip_eps=0.3,
+        ppo_epochs=10, rollout_steps=2048, minibatch_size=256,
+        ent_coef=0.05,      # low now — policy is mature enough to commit
+        vf_coef=1.5,         # higher value loss weight helps learn landing value
+        episodes=1500,       # it's improving, give it more time
+        reward_shaping=True,
     ),
     "MountainCar-v0": dict(
-        lr=3e-4, gamma=0.99, lam=0.95, clip_eps=0.2,
-        ppo_epochs=10, rollout_steps=2048, minibatch_size=256,
-        ent_coef=0.1, vf_coef=0.5, episodes=1000,
+        lr=1e-4,               # lower — value loss was exploding, lr was too high
+        gamma=0.99, lam=0.9,   # lower lam reduces variance further
+        clip_eps=0.2,
+        ppo_epochs=10,
+        rollout_steps=800,
+        minibatch_size=128,
+        ent_coef=0.05,         # back up — entropy was collapsing, needs more pressure
+        vf_coef=0.5,
+        episodes=1500,
         reward_shaping=True, curriculum=True,
     ),
     "Acrobot-v1": dict(
@@ -217,9 +280,11 @@ class ActorCritic(nn.Module):
 def train_dqn(env_name="CartPole-v1", episodes=None):
     cfg = DQN_CONFIGS.get(env_name, DQN_CONFIGS["CartPole-v1"]).copy()
     if episodes is not None: cfg["episodes"] = episodes
-    do_shape    = cfg.pop("reward_shaping", False)
-    do_curric   = cfg.pop("curriculum",     False)
-    decay_per   = cfg.pop("eps_decay_per",  "episode")
+    do_shape     = cfg.pop("reward_shaping",  False)
+    do_curric    = cfg.pop("curriculum",      False)
+    decay_per    = cfg.pop("eps_decay_per",   "episode")
+    use_step_tgt = cfg.pop("use_step_target", True)
+    use_lr_sched = cfg.pop("use_lr_schedule", False)
 
     print(f"\n{'═'*60}")
     print(f"  DQN | {env_name}  ({cfg['episodes']} ep)")
@@ -238,7 +303,8 @@ def train_dqn(env_name="CartPole-v1", episodes=None):
     target_net.eval()
 
     optimizer = optim.Adam(q_net.parameters(), lr=cfg["lr"])
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, cfg["episodes"], eta_min=1e-6)
+    scheduler = (optim.lr_scheduler.CosineAnnealingLR(optimizer, cfg["episodes"], eta_min=1e-6)
+             if use_lr_sched else None)
     buffer    = ReplayBuffer(cfg["buffer_cap"])
     epsilon   = cfg["eps_start"]
 
@@ -275,7 +341,7 @@ def train_dqn(env_name="CartPole-v1", episodes=None):
             if decay_per == "step":
                 epsilon = max(cfg["eps_end"], epsilon * cfg["eps_decay"])
 
-            if len(buffer) >= cfg["batch_size"]:
+            if len(buffer) >= cfg.get("learn_start", cfg["batch_size"]):
                 s, a, r, s2, d = buffer.sample(cfg["batch_size"])
                 with torch.no_grad():
                     target_q = r + cfg["gamma"] * target_net(s2).max(1)[0] * (1 - d)
@@ -286,14 +352,18 @@ def train_dqn(env_name="CartPole-v1", episodes=None):
                 optimizer.step()
                 ep_loss.append(loss.item())
 
-            if total_steps % cfg["target_update"] == 0:
+            if use_step_tgt and total_steps % cfg["target_update"] == 0:
                 target_net.load_state_dict(q_net.state_dict())
 
         # Per-episode epsilon decay
         if decay_per == "episode":
             epsilon = max(cfg["eps_end"], epsilon * cfg["eps_decay"])
 
-        scheduler.step()
+        if not use_step_tgt and ep % cfg["target_update"] == 0:
+            target_net.load_state_dict(q_net.state_dict())
+
+        if scheduler:
+            scheduler.step()
 
         avg_loss = float(np.mean(ep_loss)) if ep_loss else 0.0
         metrics["episode"].append(ep)
