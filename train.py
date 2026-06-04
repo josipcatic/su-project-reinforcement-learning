@@ -29,8 +29,8 @@ from torch.distributions import Categorical
 import gymnasium as gym
 
 # ─────────────────────────── Device ──────────────────────────────────────────
-#"cuda" if torch.cuda.is_available() else 
-DEVICE = torch.device("cpu")
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu" )
 print(f"[Device] Using: {DEVICE}")
 if DEVICE.type == "cuda":
     print(f"[Device] GPU: {torch.cuda.get_device_name(0)}")
@@ -60,72 +60,29 @@ def set_seed(seed=42):
 # ─────────────────────────── Reward shaping ──────────────────────────────────
 
 def shape_reward(env_name, obs, reward, done):
-    '''
-    if env_name == "MountainCar-v0":
-        pos, vel = obs[0], obs[1]
- 
-        # Reward the LEFT-swing strategy specifically:
-        # - Going left (vel < 0) when on the right side of the valley builds momentum
-        # - Going right (vel > 0) when on the left side is the payoff swing
-        # -0.6 is roughly the valley bottom
-        if vel < 0 and pos > -0.6:        # swinging left from right side — correct
-            reward += 4.2 * abs(vel)
-        elif vel > 0 and pos < -0.6:      # swinging right from left peak — correct
-            reward += 4.0 * abs(vel)
-        else:
-            reward += 2.0 * abs(vel)      # any movement still beats standing still
- 
-        # Bonus for reaching new heights on the right side
-        reward += 3.0 * max(0.0, pos - (-0.4))
- 
-        # Large bonus for actually reaching the goal
-        if pos >= 0.45:
-            reward += 100.0
-    '''
-
     if env_name == "MountainCar-v0":
         pos, vel = obs[0], obs[1]
     
         if vel < 0 and pos > -0.6:
-            reward += 0.4 * abs(vel)      # was 4.2 — scaled down 10x
+            reward += 0.4 * abs(vel)     
         elif vel > 0 and pos < -0.6:
-            reward += 0.4 * abs(vel)      # was 4.0
+            reward += 0.4 * abs(vel)    
         else:
-            reward += 0.1 * abs(vel)      # was 2.0
+            reward += 0.1 * abs(vel)     
     
-        reward += 0.3 * max(0.0, pos - (-0.4))   # was 3.0
+        reward += 0.3 * max(0.0, pos - (-0.4))   
     
         if pos >= 0.45:
-            reward += 10.0               # was 100 — still big but not insane
+            reward += 10.0              
 
     elif env_name == "LunarLander-v3":
         y_pos = obs[1]
         vel_y = obs[3]
-        # Reward being low and slow — the ideal landing approach
         if y_pos < 0.5:
             reward += 0.5 * (0.5 - y_pos)        # higher bonus closer to ground
             reward -= 0.3 * abs(vel_y)            # penalize fast descent near ground
         reward -= 0.05                            # light step penalty
     
-    '''
-    elif env_name == "LunarLander-v3":
-        x_pos  = obs[0]   # horizontal position, 0 = center
-        y_pos  = obs[1]   # vertical position
-        vel_x  = obs[2]
-        vel_y  = obs[3]
-    
-        # Guide toward the center horizontally
-        reward -= 0.3 * abs(x_pos)
-    
-        # When close to the ground, penalize high speed — encourages soft landing
-        if y_pos < 0.3:
-            reward -= 0.5 * abs(vel_y)
-            reward -= 0.5 * abs(vel_x)
-    
-        # Small step penalty to discourage hovering
-        reward -= 0.1
-    '''
-
 
     return reward
 
@@ -161,8 +118,8 @@ DQN_CONFIGS = {
         eps_start=1.0, eps_end=0.02, eps_decay_per="step", eps_decay=0.995,
         target_update=15, use_step_target=True,
         buffer_cap=200_000, episodes=1000,
-        reward_shaping=True,   # native reward is fine, shaping was hurting it
-        use_lr_schedule=False,  # keep lr stable
+        reward_shaping=True,   
+        use_lr_schedule=False,  
     ),
     "MountainCar-v0": dict(
         lr=1e-3, gamma=0.99, batch_size=64,
@@ -175,9 +132,7 @@ DQN_CONFIGS = {
     ),
     "Acrobot-v1": dict(
         lr=5e-4, gamma=0.99, batch_size=128,
-        # Per-step decay so epsilon doesn't stay high for 600 episodes
         eps_start=1.0, eps_end=0.01, eps_decay_per="step", eps_decay=0.9997,
-        # More frequent target updates + bigger buffer = no catastrophic forgetting
         target_update=5, buffer_cap=200_000, episodes=700,
     ),
 }
@@ -189,23 +144,23 @@ PPO_CONFIGS = {
         ent_coef=0.01, vf_coef=0.5, episodes=600,
     ),
     "LunarLander-v3": dict(
-        lr=2e-4,             # slightly lower now that it's converging
+        lr=2e-4,             
         gamma=0.95, lam=0.95,
         clip_eps=0.3,
         ppo_epochs=10, rollout_steps=2048, minibatch_size=256,
-        ent_coef=0.05,      # low now — policy is mature enough to commit
-        vf_coef=1.5,         # higher value loss weight helps learn landing value
-        episodes=1500,       # it's improving, give it more time
+        ent_coef=0.05,      
+        vf_coef=1.5,        
+        episodes=1500,       
         reward_shaping=True,
     ),
     "MountainCar-v0": dict(
-        lr=1e-4,               # lower — value loss was exploding, lr was too high
-        gamma=0.99, lam=0.9,   # lower lam reduces variance further
+        lr=1e-4,               
+        gamma=0.99, lam=0.9,   
         clip_eps=0.2,
         ppo_epochs=10,
         rollout_steps=800,
         minibatch_size=128,
-        ent_coef=0.05,         # back up — entropy was collapsing, needs more pressure
+        ent_coef=0.05,         
         vf_coef=0.5,
         episodes=1500,
         reward_shaping=True, curriculum=True,
@@ -213,7 +168,6 @@ PPO_CONFIGS = {
     "Acrobot-v1": dict(
         lr=3e-4, gamma=0.99, lam=0.95, clip_eps=0.2,
         ppo_epochs=10, rollout_steps=512, minibatch_size=64,
-        # Higher entropy = more random torque exploration early on
         ent_coef=0.05, vf_coef=0.5, episodes=700,
     ),
 }

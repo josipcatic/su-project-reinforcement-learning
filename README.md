@@ -40,7 +40,7 @@ python train.py --algo ppo --env mountain --episodes 500
 
 ## Viewing the Dashboard
 
-Open `dashboard.html` in your browser (any modern browser).
+Run `server.py` go to http://localhost:8765.
 
 - **Select** the environment from the dropdown
 - **Click Reload** to manually refresh metrics
@@ -94,8 +94,11 @@ rl_project/
     └── ...
 ```
 
+## Training every model:
 
+```
 python train.py --algo both --env mountain
 python train.py --algo both --env lunarlander
 python train.py --algo both --env acrobot
 python train.py --algo both --env cartpole
+```
